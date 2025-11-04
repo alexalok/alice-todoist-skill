@@ -1,15 +1,4 @@
-name = "yandex-alice-todoist-skill"
+name = "alice-todoist-skill"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
-
-[env.local]
-[[env.local.kv_namespaces]]
-binding = "TOKENS"
-preview_id = "local-alice-todoist-skill"
-
-[env.ci]
-[[env.ci.kv_namespaces]]
-binding = "TOKENS"
-id = "ci-placeholder-kv"
-preview_id = "ci-placeholder-kv"
 

@@ -2,76 +2,12 @@ import { Router, error } from "itty-router";
 import type { AliceRequest, AliceResponse } from "./types/alice";
 import type { Env } from "./types/env";
 import { addTask, isTodoistUnauthorized } from "./todoist";
-import {
-  buildTodoistAuthorizeUrl,
-  consumeLinkState,
-  consumeTodoistState,
-  deleteToken,
-  exchangeCodeForToken,
-  generateState,
-  getToken,
-  rememberTodoistState,
-  storeLinkState,
-  storeToken,
-} from "./oauth";
 
 const router = Router();
 
 router.get("/health", () => new Response("ok", { status: 200 }));
 
-router.get("/oauth/authorize", async (request: Request, env: Env) => {
-  const url = new URL(request.url);
-  const stateParam = url.searchParams.get("state");
-  if (!stateParam) {
-    return new Response("Missing state", { status: 400 });
-  }
-
-  const userId = await consumeLinkState(env, stateParam);
-  if (!userId) {
-    return new Response("Unknown or expired link state", { status: 400 });
-  }
-
-  const todoistState = generateState();
-  await rememberTodoistState(env, todoistState, { userId });
-
-  const authorizeUrl = buildTodoistAuthorizeUrl(env, todoistState);
-  return Response.redirect(authorizeUrl, 302);
-});
-
-router.get("/oauth/callback", async (request: Request, env: Env) => {
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-
-  if (!code || !state) {
-    return new Response("Missing code or state", { status: 400 });
-  }
-
-  const todoistState = await consumeTodoistState(env, state);
-  if (!todoistState) {
-    return new Response("Invalid OAuth state", { status: 400 });
-  }
-
-  try {
-    const accessToken = await exchangeCodeForToken(env, code);
-    await storeToken(env, todoistState.userId, accessToken);
-  } catch (exchangeError) {
-    console.error("OAuth exchange error", exchangeError);
-    return new Response("Failed to complete Todoist authorization", { status: 500 });
-  }
-
-  return new Response(
-    `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"/><title>Todoist подключен</title></head><body><h1>Готово!</h1><p>Учетная запись Todoist связана с навыком. Вернитесь в Алису и повторите команду.</p></body></html>`,
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-      },
-    },
-  );
-});
-
-router.post("/webhook", async (request: Request, env: Env) => {
+router.post("/webhook", async (request: Request, _env: Env) => {
   let payload: AliceRequest;
   try {
     payload = (await request.json()) as AliceRequest;
@@ -96,26 +32,12 @@ router.post("/webhook", async (request: Request, env: Env) => {
     }));
   }
 
-  const token = payload.session.user?.access_token || (await getToken(env, userId));
+  const token = extractAccessToken(request, payload);
   if (!token) {
-    const linkState = generateState();
-    await storeLinkState(env, linkState, userId);
-
-    const authorizeUrl = new URL(request.url);
-    authorizeUrl.pathname = "/oauth/authorize";
-    authorizeUrl.search = `state=${linkState}`;
-
     return jsonResponse(
       buildAliceResponse(payload, {
-        text: "Чтобы добавить задачи, сперва подключите Todoist.",
+        text: "Чтобы добавить задачи, подключите Todoist в карточке авторизации.",
         end_session: false,
-        buttons: [
-          {
-            title: "Подключить Todoist",
-            url: authorizeUrl.toString(),
-            hide: true,
-          },
-        ],
         directives: {
           account_linking: {},
         },
@@ -124,7 +46,7 @@ router.post("/webhook", async (request: Request, env: Env) => {
   }
 
   try {
-    const taskName = await addTask(env, token, commandText);
+    const taskName = await addTask(token, commandText);
     return jsonResponse(
       buildAliceResponse(payload, {
         text: `Задача «${taskName}» добавлена в Todoist.`,
@@ -135,25 +57,10 @@ router.post("/webhook", async (request: Request, env: Env) => {
     console.error("Failed to add Todoist task", apiError);
 
     if (isTodoistUnauthorized(apiError)) {
-      await deleteToken(env, userId);
-      const relinkState = generateState();
-      await storeLinkState(env, relinkState, userId);
-
-      const authorizeUrl = new URL(request.url);
-      authorizeUrl.pathname = "/oauth/authorize";
-      authorizeUrl.search = `state=${relinkState}`;
-
       return jsonResponse(
         buildAliceResponse(payload, {
           text: "Авторизация Todoist истекла. Подключите аккаунт заново.",
           end_session: false,
-          buttons: [
-            {
-              title: "Подключить снова",
-              url: authorizeUrl.toString(),
-              hide: true,
-            },
-          ],
           directives: {
             account_linking: {},
           },
@@ -197,5 +104,17 @@ function jsonResponse(payload: AliceResponse): Response {
       "Content-Type": "application/json; charset=utf-8",
     },
   });
+}
+
+function extractAccessToken(request: Request, payload: AliceRequest): string | null {
+  const headerValue = request.headers.get("Authorization");
+  if (headerValue) {
+    const match = headerValue.match(/^Bearer\s+(\S+)$/i);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return payload.session.user?.access_token ?? null;
 }
 

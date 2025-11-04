@@ -1,5 +1,3 @@
-import type { Env } from "./types/env";
-
 const TODOIST_API_BASE = "https://api.todoist.com/rest/v2";
 
 export class TodoistApiError extends Error {
@@ -14,11 +12,7 @@ export class TodoistApiError extends Error {
   }
 }
 
-export async function addTask(
-  env: Env,
-  accessToken: string,
-  content: string,
-): Promise<string> {
+export async function addTask(accessToken: string, content: string): Promise<string> {
   const response = await fetch(`${TODOIST_API_BASE}/tasks`, {
     method: "POST",
     headers: {

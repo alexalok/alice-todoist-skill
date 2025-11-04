@@ -4,78 +4,52 @@ Cloudflare Workers backend, written in TypeScript, that powers a Yandex Alice sk
 
 ## Features
 
-- Handles Alice webhook POST requests and returns compliant responses with `response.text`, `buttons`, and `directives.account_linking` (see the [Yandex Dialogs request/response reference](https://yandex.com/dev/dialogs/alice/doc/reference/request) for context).
-- Guides users through Todoist OAuth based on the [Todoist OAuth 2.0 documentation](https://developer.todoist.com/guides/#oauth).
-- Stores Todoist access tokens in Cloudflare KV, keyed by Alice `user_id`.
-- Adds tasks through `POST https://api.todoist.com/rest/v2/tasks` with graceful error handling.
+- Handles Alice webhook POST requests and returns compliant responses with `response.text` and `directives.account_linking` (see the [Yandex Dialogs request/response reference](https://yandex.com/dev/dialogs/alice/doc/reference/request) for context).
+- Relies on Yandex Dialogs to perform the full OAuth flow against Todoist (per [Yandex account linking docs](https://yandex.ru/dev/dialogs/alice/doc/ru/auth/how-it-works)).
+- Forwards the Todoist access token provided by Yandex to `POST https://api.todoist.com/rest/v2/tasks`, with graceful error handling.
 
 ## Prerequisites
 
 - Node.js 20+
-- Cloudflare account with Workers and KV enabled
+- Cloudflare account with Workers enabled
 - Todoist developer application (client id/secret)
 - Yandex Dialogs skill configured in the developer console
-
-## Environment Variables and KV
-
-- For local development copy `.dev.vars.example` to `.dev.vars` and fill in:
-  - `TODOIST_CLIENT_ID`
-  - `TODOIST_CLIENT_SECRET`
-  - `TODOIST_REDIRECT_URI`
-  Wrangler automatically loads `.dev.vars` when you run `npm run dev`.
-- In Cloudflare’s dashboard create the secrets instead of storing them in `wrangler.toml`:
-  - Workers → your Worker → **Settings → Variables → Add variable** → type “Secret text”.
-  - Add the three Todoist values there so they stay out of the repository.
-- Still in the dashboard, create a KV Namespace (Workers → KV) and bind it to the Worker as `TOKENS` under **Resources → Add binding → KV Namespace**.
-
-The Worker saves three kinds of keys in KV:
-
-- `link:<state>` – temporary state between Alice and the authorization endpoint (TTL 10 minutes)
-- `todoist:<state>` – temporary state between Todoist and the callback (TTL 10 minutes)
-- `token:<alice-user-id>` – persistent Todoist access token for the skill user
 
 ## Local Development
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # then edit the file with your real values
 npm run dev
 ```
 
-The `local` Wrangler environment uses an in-memory KV namespace (configured via `preview_id`) so you can test account linking without touching production data. Wrangler serves the worker at `http://127.0.0.1:8787`. The important routes are:
+Wrangler serves the worker at `http://127.0.0.1:8787`. The key endpoint is:
 
-- `POST /webhook` – Alice webhook
-- `GET /oauth/authorize` – first step in the Todoist OAuth flow
-- `GET /oauth/callback` – Todoist redirect URI that stores the token
-- `GET /health` – simple readiness probe
+- `POST /webhook` – Alice webhook handler
 
 ## Deployment
 
-- `npm run build` runs Wrangler’s dry-run bundler (`--env ci`) to make sure the worker compiles without needing real credentials.
-- For git-based automatic deployments in Cloudflare, connect the repository to Workers and configure environment variables and the `TOKENS` KV binding from the dashboard (Settings → Variables/Resources). No additional files are required in the repo.
-- If you ever need to run a manual CLI deployment, copy `wrangler.production.example.toml` to `wrangler.production.toml`, fill in the real KV namespace IDs, and run `wrangler deploy --config wrangler.production.toml`. Keep that file out of source control (already ignored).
+- `npm run build` runs Wrangler’s dry-run bundler to make sure the worker compiles.
+- For git-based automatic deployments in Cloudflare, connect the repository to Workers. No env vars or KV bindings are required by the worker.
+- Manual CLI deploys use `npm run deploy`.
 
 ## Yandex Dialogs Setup
 
 1. In the Yandex Dialogs console, configure the skill type “Dialog skill”.
 2. Under **Webhook**, set the URL to your deployed Worker endpoint `https://<your-worker-domain>/webhook`.
 3. In the **Account linking** section, enable OAuth linking and set:
-   - Authorization URL: `https://<your-worker-domain>/oauth/authorize`
-   - Token URL: leave empty (the Worker stores Todoist tokens)
-   - Client ID: any static value (kept by Yandex)
-   - Scopes: `data:read_write`
-4. Deploy the skill to testing and verify the flow.
-
-When Alice sends a request without a stored Todoist token, the worker returns an account linking directive and a convenience button pointing at `/oauth/authorize?state=<generated-state>`. The state is mapped to the user ID in KV so the callback can store the token correctly.
+   - Authorization URL: `https://todoist.com/oauth/authorize`
+   - Token URL: `https://todoist.com/oauth/access_token`
+   - Refresh token URL: leave empty (Todoist does not issue refresh tokens)
+   - Client Identifier / Secret: your Todoist app credentials (Yandex uses them when exchanging codes for tokens)
+   - Access Token Scope: `data:read_write`
+4. Deploy the skill to testing and verify the flow. When linking succeeds, Yandex stores the Todoist token and sends it to the worker with each subsequent request via the `Authorization` header and `session.user.access_token` field.
 
 ## Todoist OAuth Flow
 
-1. Alice user triggers the skill → worker detects missing token → responds with account linking directive.
-2. Alice opens the directive → Yandex visits `/oauth/authorize?state=<state>`.
-3. Worker looks up `<state>` → redirects to Todoist authorize page with its own state.
-4. Todoist redirects to `/oauth/callback?code=<code>&state=<worker-state>`.
-5. Worker exchanges the code for an access token and stores it as `token:<user-id>`.
-6. User repeats the voice command → worker finds the stored token and creates a Todoist task.
+1. A user invokes the skill without a linked Todoist account → the worker responds with `directives.account_linking`.
+2. Yandex handles the linking UX: it redirects the user to Todoist’s OAuth authorize page and, after approval, exchanges the authorization code for an access token using the Todoist token endpoint.
+3. On subsequent requests, Yandex attaches the Todoist access token to the webhook call (`Authorization: Bearer ...` and `session.user.access_token`).
+4. The worker forwards that token when calling the Todoist REST API. If Todoist responds with `401`, the worker asks Yandex to re-link by returning another `account_linking` directive.
 
 ## Testing Tips
 
@@ -96,8 +70,8 @@ The first call returns a linking directive; after completing OAuth the response 
 
 ## Security Considerations
 
-- Restrict access to the KV namespace, because Todoist tokens are stored as plain strings.
-- Rotate Todoist client secrets periodically, update them in the Cloudflare dashboard, and refresh your local `.dev.vars` copy.
+- Treat the Todoist token from Yandex as sensitive: forward it only to Todoist over HTTPS and avoid logging it.
+- Rotate your Todoist client secret periodically within the Yandex console so new tokens are minted with the updated credentials.
 - Consider adding rate limiting or signature validation if Yandex introduces request signing.
 
 ## License

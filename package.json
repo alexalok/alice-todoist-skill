@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "build": "wrangler deploy --dry-run --outdir dist --env ci",
+    "build": "wrangler deploy --dry-run --outdir dist",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev --env local",
+    "dev": "wrangler dev",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "lint": "tsc --noEmit"
   },

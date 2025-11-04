@@ -1,5 +1,3 @@
-.dev.vars
-wrangler.production.toml
 dist
 node_modules
 
