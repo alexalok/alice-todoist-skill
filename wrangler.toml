@@ -1,0 +1,4 @@
+name = "alice-todoist-skill"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
