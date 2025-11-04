@@ -1,0 +1,11 @@
+# Copy this file to `wrangler.production.toml` and replace the placeholders
+# with your real Cloudflare resource identifiers before deploying.
+name = "alice-todoist-skill"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "<your-production-kv-id>"
+preview_id = "<your-preview-kv-id>"
+

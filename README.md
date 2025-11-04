@@ -18,21 +18,17 @@ Cloudflare Workers backend, written in TypeScript, that powers a Yandex Alice sk
 
 ## Environment Variables and KV
 
-Set the following variables and KV namespace in `wrangler.toml` (replace the placeholder values):
+- For local development copy `.dev.vars.example` to `.dev.vars` and fill in:
+  - `TODOIST_CLIENT_ID`
+  - `TODOIST_CLIENT_SECRET`
+  - `TODOIST_REDIRECT_URI`
+  Wrangler automatically loads `.dev.vars` when you run `npm run dev`.
+- In Cloudflare’s dashboard create the secrets instead of storing them in `wrangler.toml`:
+  - Workers → your Worker → **Settings → Variables → Add variable** → type “Secret text”.
+  - Add the three Todoist values there so they stay out of the repository.
+- Still in the dashboard, create a KV Namespace (Workers → KV) and bind it to the Worker as `TOKENS` under **Resources → Add binding → KV Namespace**.
 
-```toml
-[vars]
-TODOIST_CLIENT_ID = "<todoist-client-id>"
-TODOIST_CLIENT_SECRET = "<todoist-client-secret>"
-TODOIST_REDIRECT_URI = "https://<your-worker-domain>/oauth/callback"
-
-[[kv_namespaces]]
-binding = "TOKENS"
-id = "<kv-id>"
-preview_id = "<kv-preview-id>"
-```
-
-The Worker saves two kinds of keys in KV:
+The Worker saves three kinds of keys in KV:
 
 - `link:<state>` – temporary state between Alice and the authorization endpoint (TTL 10 minutes)
 - `todoist:<state>` – temporary state between Todoist and the callback (TTL 10 minutes)
@@ -42,10 +38,11 @@ The Worker saves two kinds of keys in KV:
 
 ```bash
 npm install
+cp .dev.vars.example .dev.vars   # then edit the file with your real values
 npm run dev
 ```
 
-By default Wrangler serves the worker at `http://127.0.0.1:8787`. The important routes are:
+The `local` Wrangler environment uses an in-memory KV namespace (configured via `preview_id`) so you can test account linking without touching production data. Wrangler serves the worker at `http://127.0.0.1:8787`. The important routes are:
 
 - `POST /webhook` – Alice webhook
 - `GET /oauth/authorize` – first step in the Todoist OAuth flow
@@ -54,13 +51,9 @@ By default Wrangler serves the worker at `http://127.0.0.1:8787`. The important 
 
 ## Deployment
 
-```bash
-# Dry-run bundle to ensure the worker compiles
-npm run build
-
-# Deploy to Cloudflare
-npm run deploy
-```
+- `npm run build` runs Wrangler’s dry-run bundler (`--env ci`) to make sure the worker compiles without needing real credentials.
+- For git-based automatic deployments in Cloudflare, connect the repository to Workers and configure environment variables and the `TOKENS` KV binding from the dashboard (Settings → Variables/Resources). No additional files are required in the repo.
+- If you ever need to run a manual CLI deployment, copy `wrangler.production.example.toml` to `wrangler.production.toml`, fill in the real KV namespace IDs, and run `wrangler deploy --config wrangler.production.toml`. Keep that file out of source control (already ignored).
 
 ## Yandex Dialogs Setup
 
@@ -104,7 +97,7 @@ The first call returns a linking directive; after completing OAuth the response 
 ## Security Considerations
 
 - Restrict access to the KV namespace, because Todoist tokens are stored as plain strings.
-- Rotate Todoist client secrets periodically and update `wrangler.toml`.
+- Rotate Todoist client secrets periodically, update them in the Cloudflare dashboard, and refresh your local `.dev.vars` copy.
 - Consider adding rate limiting or signature validation if Yandex introduces request signing.
 
 ## License

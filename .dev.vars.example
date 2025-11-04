@@ -1,0 +1,5 @@
+# Copy this file to `.dev.vars` and fill in real values for local development.
+TODOIST_CLIENT_ID=
+TODOIST_CLIENT_SECRET=
+TODOIST_REDIRECT_URI=
+
