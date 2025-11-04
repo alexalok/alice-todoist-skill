@@ -10,6 +10,13 @@ import { addTask, isTodoistUnauthorized } from "./todoist";
 
 const router = Router();
 
+const GREETING_MESSAGE = "Назовите задачу, и я добавлю её в ваш список дел в Todoist.";
+
+const HELP_COMMANDS = new Set([
+  "помощь",
+  "что ты умеешь",
+]);
+
 router.get("/health", () => new Response("ok", { status: 200 }));
 
 router.post("/webhook", async (request: Request, _env: Env) => {
@@ -30,9 +37,10 @@ router.post("/webhook", async (request: Request, _env: Env) => {
   }
 
   const commandText = (payload.request.original_utterance || payload.request.command || "").trim();
-  if (!commandText) {
+  const normalizedCommand = normalizeCommand(commandText);
+  if (!normalizedCommand || HELP_COMMANDS.has(normalizedCommand)) {
     return jsonResponse(buildSpeechResponse(payload, {
-      text: "Что добавить в Todoist?",
+      text: GREETING_MESSAGE,
       end_session: false,
     }));
   }
@@ -297,6 +305,14 @@ function serializeError(err: unknown): Record<string, unknown> {
   }
 
   return { message: String(err) };
+}
+
+function normalizeCommand(command: string): string {
+  return command
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[?!.,]+$/gu, "")
+    .trim();
 }
 
 const SENSITIVE_HEADER_KEYS = new Set([
