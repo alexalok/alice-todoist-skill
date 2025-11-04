@@ -49,16 +49,12 @@ describe("Alice webhook", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
 
     const body = (await response.json()) as {
-      response: {
-        text: string;
-        directives?: {
-          account_linking?: Record<string, never>;
-        };
-      };
+      start_account_linking?: Record<string, never>;
+      response?: unknown;
     };
 
-    expect(body.response.text).toContain("подключите Todoist");
-    expect(body.response.directives?.account_linking).toEqual({});
+    expect(body.start_account_linking).toEqual({});
+    expect(body.response).toBeUndefined();
   });
 });
 

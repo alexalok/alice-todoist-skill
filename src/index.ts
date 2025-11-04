@@ -1,5 +1,10 @@
 import { Router, error } from "itty-router";
-import type { AliceRequest, AliceResponse } from "./types/alice";
+import type {
+  AliceRequest,
+  AliceResponse,
+  AliceSpeechResponse,
+  AliceStartAccountLinkingResponse,
+} from "./types/alice";
 import type { Env } from "./types/env";
 import { addTask, isTodoistUnauthorized } from "./todoist";
 
@@ -18,7 +23,7 @@ router.post("/webhook", async (request: Request, _env: Env) => {
 
   const userId = payload.session.user?.user_id ?? payload.session.user_id;
   if (!userId) {
-    return jsonResponse(buildAliceResponse(payload, {
+    return jsonResponse(buildSpeechResponse(payload, {
       text: "Не удалось определить пользователя. Попробуйте позже.",
       end_session: true,
     }));
@@ -26,7 +31,7 @@ router.post("/webhook", async (request: Request, _env: Env) => {
 
   const commandText = (payload.request.original_utterance || payload.request.command || "").trim();
   if (!commandText) {
-    return jsonResponse(buildAliceResponse(payload, {
+    return jsonResponse(buildSpeechResponse(payload, {
       text: "Что добавить в Todoist?",
       end_session: false,
     }));
@@ -34,21 +39,13 @@ router.post("/webhook", async (request: Request, _env: Env) => {
 
   const token = extractAccessToken(request, payload);
   if (!token) {
-    return jsonResponse(
-      buildAliceResponse(payload, {
-        text: "Чтобы добавить задачи, подключите Todoist в карточке авторизации.",
-        end_session: false,
-        directives: {
-          account_linking: {},
-        },
-      }),
-    );
+    return jsonResponse(buildStartAccountLinkingResponse(payload));
   }
 
   try {
     const taskName = await addTask(token, commandText);
     return jsonResponse(
-      buildAliceResponse(payload, {
+      buildSpeechResponse(payload, {
         text: `Задача «${taskName}» добавлена в Todoist.`,
         end_session: true,
       }),
@@ -57,19 +54,11 @@ router.post("/webhook", async (request: Request, _env: Env) => {
     console.error("Failed to add Todoist task", apiError);
 
     if (isTodoistUnauthorized(apiError)) {
-      return jsonResponse(
-        buildAliceResponse(payload, {
-          text: "Авторизация Todoist истекла. Подключите аккаунт заново.",
-          end_session: false,
-          directives: {
-            account_linking: {},
-          },
-        }),
-      );
+      return jsonResponse(buildStartAccountLinkingResponse(payload));
     }
 
     return jsonResponse(
-      buildAliceResponse(payload, {
+      buildSpeechResponse(payload, {
         text: "Произошла ошибка при добавлении задачи. Попробуйте ещё раз позже.",
         end_session: false,
       }),
@@ -83,10 +72,10 @@ export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => router.handle(request, env, ctx).catch(error),
 };
 
-function buildAliceResponse(
+function buildSpeechResponse(
   request: AliceRequest,
-  response: AliceResponse["response"],
-): AliceResponse {
+  response: AliceSpeechResponse["response"],
+): AliceSpeechResponse {
   return {
     version: request.version,
     session: {
@@ -95,6 +84,20 @@ function buildAliceResponse(
       user_id: request.session.user_id,
     },
     response,
+  };
+}
+
+function buildStartAccountLinkingResponse(
+  request: AliceRequest,
+): AliceStartAccountLinkingResponse {
+  return {
+    version: request.version,
+    session: {
+      session_id: request.session.session_id,
+      message_id: request.session.message_id,
+      user_id: request.session.user_id,
+    },
+    start_account_linking: {},
   };
 }
 

@@ -34,13 +34,19 @@ export interface AliceRequest {
   };
 }
 
-export interface AliceResponse {
+interface AliceBaseResponse {
   version: string;
   session: {
     session_id: string;
     message_id: number;
     user_id: string;
   };
+  user_state_update?: Record<string, unknown>;
+  session_state?: Record<string, unknown>;
+  application_state?: Record<string, unknown>;
+}
+
+export interface AliceSpeechResponse extends AliceBaseResponse {
   response: {
     text: string;
     end_session: boolean;
@@ -56,9 +62,12 @@ export interface AliceResponse {
       account_linking?: Record<string, never>;
     };
   };
-  user_state_update?: Record<string, unknown>;
-  session_state?: Record<string, unknown>;
-  application_state?: Record<string, unknown>;
+  start_account_linking?: never;
 }
 
+export interface AliceStartAccountLinkingResponse extends AliceBaseResponse {
+  start_account_linking: Record<string, never>;
+  response?: never;
+}
 
+export type AliceResponse = AliceSpeechResponse | AliceStartAccountLinkingResponse;
