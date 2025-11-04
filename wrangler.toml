@@ -1,0 +1,14 @@
+name = "alice-todoist-skill"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+[vars]
+TODOIST_CLIENT_ID = ""
+TODOIST_CLIENT_SECRET = ""
+TODOIST_REDIRECT_URI = ""
+
+[[kv_namespaces]]
+binding = "TOKENS"
+id = ""
+preview_id = ""
+
