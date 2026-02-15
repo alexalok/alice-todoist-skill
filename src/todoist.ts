@@ -26,10 +26,11 @@ export async function addTask(accessToken: string, content: string): Promise<str
 
   if (!response.ok) {
     let details: unknown;
+    const text = await response.text();
     try {
-      details = await response.json();
-    } catch (error) {
-      details = await response.text();
+      details = JSON.parse(text);
+    } catch {
+      details = text;
     }
     throw new TodoistApiError("Todoist API request failed", response.status, details);
   }
