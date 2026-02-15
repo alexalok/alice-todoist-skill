@@ -32,7 +32,7 @@ export async function addTask(accessToken: string, content: string): Promise<str
     } catch {
       details = text;
     }
-    throw new TodoistApiError("Todoist API request failed", response.status, details);
+    throw new TodoistApiError(`Todoist API request failed with status ${response.status}`, response.status, details);
   }
 
   const result = (await response.json()) as { id: string; content: string };

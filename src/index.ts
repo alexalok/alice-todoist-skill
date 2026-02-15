@@ -59,7 +59,7 @@ router.post("/webhook", async (request: Request, _env: Env) => {
       }),
     );
   } catch (apiError) {
-    console.error("Failed to add Todoist task", apiError);
+    console.error("Failed to add Todoist task", serializeError(apiError));
 
     if (isTodoistUnauthorized(apiError)) {
       return jsonResponse(buildStartAccountLinkingResponse(payload));
@@ -293,11 +293,20 @@ function truncate(value: string, maxLength = 1024): string {
 
 function serializeError(err: unknown): Record<string, unknown> {
   if (err instanceof Error) {
-    return {
+    const base: Record<string, unknown> = {
       name: err.name,
       message: err.message,
       stack: err.stack,
     };
+
+    // Capture custom properties from Error subclasses (e.g. TodoistApiError.status / .details)
+    for (const key of Object.keys(err)) {
+      if (!(key in base)) {
+        base[key] = (err as unknown as Record<string, unknown>)[key];
+      }
+    }
+
+    return base;
   }
 
   if (typeof err === "object" && err !== null) {
