@@ -1,4 +1,4 @@
-const TODOIST_API_BASE = "https://api.todoist.com/rest/v2";
+const TODOIST_API_BASE = "https://api.todoist.com/api/v1";
 
 export class TodoistApiError extends Error {
   readonly status: number;
